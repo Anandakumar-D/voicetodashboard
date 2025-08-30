@@ -1,4 +1,9 @@
+# Dependencies
+node_modules/
+**/node_modules/
 env/
-google-stt.json
-
+venv/
 .env
+
+# Configuration files
+google-stt.json

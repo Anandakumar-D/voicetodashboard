@@ -1,0 +1,48 @@
+{
+  "api": {
+    "http": {
+      "host": "0.0.0.0",
+      "port": 47334
+    },
+    "mysql": {
+      "host": "0.0.0.0",
+      "port": 47335
+    }
+  },
+  "auth": {
+    "username": "mindsdb",
+    "password": "mindsdb"
+  },
+  "storage": {
+    "path": "/app/mindsdb_data"
+  },
+  "log": {
+    "level": "INFO"
+  },
+  "integrations": {
+    "default_clickhouse": {
+      "type": "clickhouse",
+      "host": "clickhouse",
+      "port": 8123,
+      "user": "default",
+      "password": "password",
+      "database": "default"
+    },
+    "default_mysql": {
+      "type": "mysql",
+      "host": "mysql",
+      "port": 3306,
+      "user": "root",
+      "password": "password",
+      "database": "test"
+    },
+    "default_postgres": {
+      "type": "postgres",
+      "host": "postgres",
+      "port": 5432,
+      "user": "postgres",
+      "password": "password",
+      "database": "test"
+    }
+  }
+}
