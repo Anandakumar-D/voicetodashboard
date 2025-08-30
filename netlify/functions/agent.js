@@ -38,7 +38,7 @@ exports.handler = async (event, context) => {
 
         // Get connection details
         const { data: connection, error: connectionError } = await supabase
-          .from('clickhouse_connections')
+          .from('data_source_connections')
           .select('*')
           .eq('id', connectionId)
           .single()
@@ -63,6 +63,7 @@ exports.handler = async (event, context) => {
         await logQueryHistory({
           organizationId,
           userId,
+          connectionId,
           naturalLanguageQuery,
           sqlQuery,
           rowCount: queryResult.length,
@@ -83,10 +84,11 @@ exports.handler = async (event, context) => {
         
         // Log failed query
         if (event.body) {
-          const { organizationId, userId, naturalLanguageQuery } = JSON.parse(event.body)
+          const { organizationId, userId, connectionId, naturalLanguageQuery } = JSON.parse(event.body)
           await logQueryHistory({
             organizationId,
             userId,
+            connectionId,
             naturalLanguageQuery,
             sqlQuery: '',
             rowCount: 0,
@@ -107,12 +109,14 @@ exports.handler = async (event, context) => {
 async function getSchemaContext(connectionId) {
   try {
     const { data: schemas } = await supabase
-      .from('database_schemas')
+      .from('data_source_schemas')
       .select(`
         name,
-        tables (
+        type,
+        data_source_objects (
           name,
-          columns (
+          type,
+          data_source_fields (
             name,
             data_type,
             description,
@@ -133,32 +137,27 @@ async function convertToSQL(naturalLanguageQuery, schemaContext, connection) {
   try {
     // Build schema context string
     const schemaString = schemaContext.map(schema => {
-      const tables = schema.tables.map(table => {
-        const columns = table.columns.map(col => 
-          `${col.name} (${col.data_type})${col.description ? ` - ${col.description}` : ''}`
+      const objects = schema.data_source_objects.map(obj => {
+        const fields = obj.data_source_fields.map(field => 
+          `${field.name} (${field.data_type})${field.description ? ` - ${field.description}` : ''}`
         ).join(', ')
-        return `Table: ${table.name} - Columns: ${columns}`
+        return `${obj.type}: ${obj.name} - Fields: ${fields}`
       }).join('\n')
-      return `Database: ${schema.name}\n${tables}`
+      return `${schema.type}: ${schema.name}\n${objects}`
     }).join('\n\n')
 
     // Use MindsDB MCP to convert natural language to SQL
     const mcpResponse = await axios.post(`${MINDSDB_HOST}/api/sql/query`, {
       query: `
         SELECT 
-          'Convert the following natural language query to ClickHouse SQL based on this schema context:' as instruction,
+          'Convert the following natural language query to ${connection.type.toUpperCase()} SQL based on this schema context:' as instruction,
           '${naturalLanguageQuery.replace(/'/g, "''")}' as natural_language_query,
           '${schemaString.replace(/'/g, "''")}' as schema_context
       `,
       context: {
         datasource: {
-          type: 'clickhouse',
-          host: connection.host,
-          port: connection.port,
-          database: connection.database,
-          username: connection.username,
-          password: connection.password,
-          secure: connection.secure
+          type: connection.type,
+          ...connection.connection_config
         }
       }
     }, {
@@ -188,13 +187,8 @@ async function executeQuery(sqlQuery, connection) {
       query: sqlQuery,
       context: {
         datasource: {
-          type: 'clickhouse',
-          host: connection.host,
-          port: connection.port,
-          database: connection.database,
-          username: connection.username,
-          password: connection.password,
-          secure: connection.secure
+          type: connection.type,
+          ...connection.connection_config
         }
       }
     }, {
@@ -214,6 +208,7 @@ async function executeQuery(sqlQuery, connection) {
 async function logQueryHistory({ 
   organizationId, 
   userId, 
+  connectionId,
   naturalLanguageQuery, 
   sqlQuery, 
   rowCount, 
@@ -226,6 +221,7 @@ async function logQueryHistory({
       .insert({
         organization_id: organizationId,
         user_id: userId,
+        data_source_connection_id: connectionId,
         natural_language_query: naturalLanguageQuery,
         sql_query: sqlQuery,
         row_count: rowCount,

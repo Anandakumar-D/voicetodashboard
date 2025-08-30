@@ -1,5 +1,6 @@
 -- Auralytics Database Schema
 -- This script sets up the initial database structure for the modern architecture
+-- Supports multiple data sources via MindsDB MCP
 
 -- Enable necessary extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -36,50 +37,52 @@ CREATE TABLE IF NOT EXISTS public.organization_members (
     UNIQUE(organization_id, user_id)
 );
 
--- ClickHouse connections
-CREATE TABLE IF NOT EXISTS public.clickhouse_connections (
+-- Data source connections (flexible for any type)
+CREATE TABLE IF NOT EXISTS public.data_source_connections (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     organization_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
-    host TEXT NOT NULL,
-    port INTEGER NOT NULL DEFAULT 8123,
-    database TEXT NOT NULL,
-    username TEXT NOT NULL,
-    password TEXT NOT NULL,
-    secure BOOLEAN DEFAULT FALSE,
+    type TEXT NOT NULL, -- 'clickhouse', 'mysql', 'postgresql', 'mongodb', 'api', etc.
+    description TEXT,
+    connection_config JSONB NOT NULL, -- Flexible config for any data source
+    is_active BOOLEAN DEFAULT TRUE,
     created_by UUID REFERENCES public.profiles(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Database schemas
-CREATE TABLE IF NOT EXISTS public.database_schemas (
+-- Data source schemas
+CREATE TABLE IF NOT EXISTS public.data_source_schemas (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    connection_id UUID REFERENCES public.clickhouse_connections(id) ON DELETE CASCADE,
+    connection_id UUID REFERENCES public.data_source_connections(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
+    type TEXT NOT NULL, -- 'database', 'collection', 'api_endpoint', etc.
     description TEXT,
+    metadata JSONB, -- Additional metadata specific to the data source type
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(connection_id, name)
 );
 
--- Tables
-CREATE TABLE IF NOT EXISTS public.tables (
+-- Data source tables/collections/endpoints
+CREATE TABLE IF NOT EXISTS public.data_source_objects (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    schema_id UUID REFERENCES public.database_schemas(id) ON DELETE CASCADE,
+    schema_id UUID REFERENCES public.data_source_schemas(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
+    type TEXT NOT NULL, -- 'table', 'collection', 'endpoint', 'view', etc.
     description TEXT,
     row_count BIGINT,
     size_bytes BIGINT,
+    metadata JSONB, -- Additional metadata
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(schema_id, name)
 );
 
--- Columns with semantics
-CREATE TABLE IF NOT EXISTS public.columns (
+-- Columns/fields with semantics (works for any data source)
+CREATE TABLE IF NOT EXISTS public.data_source_fields (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    table_id UUID REFERENCES public.tables(id) ON DELETE CASCADE,
+    object_id UUID REFERENCES public.data_source_objects(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     data_type TEXT NOT NULL,
     is_nullable BOOLEAN DEFAULT TRUE,
@@ -88,15 +91,16 @@ CREATE TABLE IF NOT EXISTS public.columns (
     ai_description TEXT,
     business_definition TEXT,
     data_quality_score DECIMAL(3,2),
+    metadata JSONB, -- Additional field metadata
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(table_id, name)
+    UNIQUE(object_id, name)
 );
 
--- Column semantics history (for versioning)
-CREATE TABLE IF NOT EXISTS public.column_semantics_history (
+-- Field semantics history (for versioning)
+CREATE TABLE IF NOT EXISTS public.field_semantics_history (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    column_id UUID REFERENCES public.columns(id) ON DELETE CASCADE,
+    field_id UUID REFERENCES public.data_source_fields(id) ON DELETE CASCADE,
     description TEXT NOT NULL,
     ai_description TEXT,
     business_definition TEXT,
@@ -124,6 +128,7 @@ CREATE TABLE IF NOT EXISTS public.dashboard_widgets (
     type TEXT NOT NULL,
     config JSONB NOT NULL,
     position JSONB,
+    data_source_connection_id UUID REFERENCES public.data_source_connections(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -133,12 +138,27 @@ CREATE TABLE IF NOT EXISTS public.query_history (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     organization_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
     user_id UUID REFERENCES public.profiles(id),
+    data_source_connection_id UUID REFERENCES public.data_source_connections(id),
     natural_language_query TEXT,
     sql_query TEXT NOT NULL,
     execution_time_ms INTEGER,
     row_count INTEGER,
     status TEXT NOT NULL,
     error_message TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Data source sync history
+CREATE TABLE IF NOT EXISTS public.data_source_sync_history (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    connection_id UUID REFERENCES public.data_source_connections(id) ON DELETE CASCADE,
+    sync_type TEXT NOT NULL, -- 'schema', 'data', 'full'
+    status TEXT NOT NULL, -- 'success', 'failed', 'partial'
+    objects_synced INTEGER,
+    fields_synced INTEGER,
+    error_message TEXT,
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    completed_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -182,23 +202,62 @@ CREATE POLICY "Members can view organization members" ON public.organization_mem
         )
     );
 
--- ClickHouse connections RLS
-ALTER TABLE public.clickhouse_connections ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Members can view connections" ON public.clickhouse_connections
+-- Data source connections RLS
+ALTER TABLE public.data_source_connections ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Members can view connections" ON public.data_source_connections
     FOR SELECT USING (
         EXISTS (
             SELECT 1 FROM public.organization_members
-            WHERE organization_id = clickhouse_connections.organization_id
+            WHERE organization_id = data_source_connections.organization_id
             AND user_id = auth.uid()
         )
     );
-CREATE POLICY "Admins can manage connections" ON public.clickhouse_connections
+CREATE POLICY "Admins can manage connections" ON public.data_source_connections
     FOR ALL USING (
         EXISTS (
             SELECT 1 FROM public.organization_members
-            WHERE organization_id = clickhouse_connections.organization_id
+            WHERE organization_id = data_source_connections.organization_id
             AND user_id = auth.uid()
             AND role IN ('owner', 'admin')
+        )
+    );
+
+-- Data source schemas RLS
+ALTER TABLE public.data_source_schemas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Members can view schemas" ON public.data_source_schemas
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM public.organization_members om
+            JOIN public.data_source_connections dsc ON dsc.organization_id = om.organization_id
+            WHERE dsc.id = data_source_schemas.connection_id
+            AND om.user_id = auth.uid()
+        )
+    );
+
+-- Data source objects RLS
+ALTER TABLE public.data_source_objects ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Members can view objects" ON public.data_source_objects
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM public.organization_members om
+            JOIN public.data_source_connections dsc ON dsc.organization_id = om.organization_id
+            JOIN public.data_source_schemas dss ON dss.connection_id = dsc.id
+            WHERE dss.id = data_source_objects.schema_id
+            AND om.user_id = auth.uid()
+        )
+    );
+
+-- Data source fields RLS
+ALTER TABLE public.data_source_fields ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Members can view fields" ON public.data_source_fields
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM public.organization_members om
+            JOIN public.data_source_connections dsc ON dsc.organization_id = om.organization_id
+            JOIN public.data_source_schemas dss ON dss.connection_id = dsc.id
+            JOIN public.data_source_objects dso ON dso.schema_id = dss.id
+            WHERE dso.id = data_source_fields.object_id
+            AND om.user_id = auth.uid()
         )
     );
 
@@ -235,13 +294,16 @@ CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON public.profiles
 CREATE TRIGGER update_organizations_updated_at BEFORE UPDATE ON public.organizations
     FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
-CREATE TRIGGER update_clickhouse_connections_updated_at BEFORE UPDATE ON public.clickhouse_connections
+CREATE TRIGGER update_data_source_connections_updated_at BEFORE UPDATE ON public.data_source_connections
     FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
-CREATE TRIGGER update_tables_updated_at BEFORE UPDATE ON public.tables
+CREATE TRIGGER update_data_source_schemas_updated_at BEFORE UPDATE ON public.data_source_schemas
     FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
-CREATE TRIGGER update_columns_updated_at BEFORE UPDATE ON public.columns
+CREATE TRIGGER update_data_source_objects_updated_at BEFORE UPDATE ON public.data_source_objects
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+CREATE TRIGGER update_data_source_fields_updated_at BEFORE UPDATE ON public.data_source_fields
     FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 CREATE TRIGGER update_dashboards_updated_at BEFORE UPDATE ON public.dashboards
@@ -254,3 +316,25 @@ CREATE TRIGGER update_dashboard_widgets_updated_at BEFORE UPDATE ON public.dashb
 INSERT INTO public.organizations (name, slug, description) 
 VALUES ('Demo Organization', 'demo', 'Demo organization for testing')
 ON CONFLICT (slug) DO NOTHING;
+
+-- Insert sample ClickHouse connection
+INSERT INTO public.data_source_connections (
+    organization_id,
+    name,
+    type,
+    description,
+    connection_config
+) VALUES (
+    (SELECT id FROM public.organizations WHERE slug = 'demo'),
+    'Sample ClickHouse',
+    'clickhouse',
+    'Sample ClickHouse connection for testing',
+    '{
+        "host": "localhost",
+        "port": 8123,
+        "database": "default",
+        "username": "default",
+        "password": "password",
+        "secure": false
+    }'
+) ON CONFLICT DO NOTHING;

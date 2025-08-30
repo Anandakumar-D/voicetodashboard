@@ -1,2 +1,4 @@
 env/
 google-stt.json
+
+.env
