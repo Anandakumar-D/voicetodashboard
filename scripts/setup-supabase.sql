@@ -6,21 +6,7 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- Clean up existing objects to prevent conflicts
--- Drop existing triggers first
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-DROP TRIGGER IF EXISTS update_profiles_updated_at ON public.profiles;
-DROP TRIGGER IF EXISTS update_organizations_updated_at ON public.organizations;
-DROP TRIGGER IF EXISTS update_data_source_connections_updated_at ON public.data_source_connections;
-DROP TRIGGER IF EXISTS update_data_source_schemas_updated_at ON public.data_source_schemas;
-DROP TRIGGER IF EXISTS update_data_source_objects_updated_at ON public.data_source_objects;
-DROP TRIGGER IF EXISTS update_data_source_fields_updated_at ON public.data_source_fields;
-DROP TRIGGER IF EXISTS update_dashboards_updated_at ON public.dashboards;
-DROP TRIGGER IF EXISTS update_dashboard_widgets_updated_at ON public.dashboard_widgets;
-
--- Drop existing functions
-DROP FUNCTION IF EXISTS public.handle_new_user() CASCADE;
-DROP FUNCTION IF EXISTS public.update_updated_at_column() CASCADE;
+-- Note: Cleanup will be done after tables are created to avoid errors
 
 -- Users table (extends Supabase auth.users)
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -320,6 +306,22 @@ CREATE POLICY "Members can view fields" ON public.data_source_fields
             AND om.user_id = auth.uid()
         )
     );
+
+-- Clean up existing objects to prevent conflicts (after tables are created)
+-- Drop existing triggers first
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON public.profiles;
+DROP TRIGGER IF EXISTS update_organizations_updated_at ON public.organizations;
+DROP TRIGGER IF EXISTS update_data_source_connections_updated_at ON public.data_source_connections;
+DROP TRIGGER IF EXISTS update_data_source_schemas_updated_at ON public.data_source_schemas;
+DROP TRIGGER IF EXISTS update_data_source_objects_updated_at ON public.data_source_objects;
+DROP TRIGGER IF EXISTS update_data_source_fields_updated_at ON public.data_source_fields;
+DROP TRIGGER IF EXISTS update_dashboards_updated_at ON public.dashboards;
+DROP TRIGGER IF EXISTS update_dashboard_widgets_updated_at ON public.dashboard_widgets;
+
+-- Drop existing functions
+DROP FUNCTION IF EXISTS public.handle_new_user() CASCADE;
+DROP FUNCTION IF EXISTS public.update_updated_at_column() CASCADE;
 
 -- Functions and triggers
 
