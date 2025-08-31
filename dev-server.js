@@ -81,6 +81,68 @@ app.post('/.netlify/functions/schema-sync', async (req, res) => {
   }
 })
 
+// Enhanced schema sync function endpoint
+app.post('/.netlify/functions/enhanced-schema-sync', async (req, res) => {
+  try {
+    const { connectionId, connection, aiAnalysisEnabled = true } = req.body
+    
+    console.log('Enhanced schema sync function called with:', { connectionId, connection, aiAnalysisEnabled })
+    
+    // For now, return a mock comprehensive response
+    // In production, this would use the full enhanced-schema-sync.js logic
+    const mockMetadata = {
+      databases: {
+        'default': {
+          schemas: {
+            'default': {
+              tables: {
+                'system': {
+                  columns: [
+                    {
+                      name: 'name',
+                      type: 'String',
+                      comment: 'System name',
+                      ai_definition: 'System name identifier',
+                      business_definition: 'System name identifier'
+                    },
+                    {
+                      name: 'value',
+                      type: 'String',
+                      comment: 'System value',
+                      ai_definition: 'System configuration value',
+                      business_definition: 'System configuration value'
+                    }
+                  ],
+                  column_count: 2
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    // Return comprehensive metadata response
+    res.json({
+      success: true,
+      message: 'Comprehensive metadata extraction completed successfully',
+      connection_id: connectionId === 'new' ? 'mock-connection-id' : connectionId,
+      metadata_summary: {
+        databases: Object.keys(mockMetadata.databases).length,
+        tables: 1,
+        columns: 2
+      },
+      metadata: mockMetadata
+    })
+  } catch (error) {
+    console.error('Enhanced schema sync function error:', error)
+    res.status(500).json({ 
+      error: error.message,
+      details: 'Failed to extract comprehensive metadata'
+    })
+  }
+})
+
 // In-memory storage for connections (in production, this would be Supabase)
 let connections = [
   {
@@ -134,6 +196,58 @@ app.get('/.netlify/functions/get-schemas', (req, res) => {
           fields: [
             { id: '1', name: 'name', data_type: 'String', description: 'System name' },
             { id: '2', name: 'value', data_type: 'String', description: 'System value' }
+          ]
+        }
+      ]
+    }
+  ]
+  res.json({ schemas })
+})
+
+// Get comprehensive schemas endpoint
+app.get('/.netlify/functions/get-comprehensive-schemas', (req, res) => {
+  // Return comprehensive schema data with AI-generated business definitions
+  const schemas = [
+    {
+      id: '1',
+      name: 'default',
+      type: 'database',
+      objects: [
+        {
+          id: '1',
+          name: 'system',
+          type: 'table',
+          fields: [
+            { 
+              id: '1', 
+              name: 'name', 
+              data_type: 'String', 
+              description: 'System name',
+              ai_description: 'System name identifier',
+              business_definition: 'System name identifier',
+              comment: 'System name',
+              default_expression: null,
+              codec_expression: null,
+              ttl_expression: null,
+              is_nullable: true,
+              is_primary_key: false,
+              is_indexed: false
+            },
+            { 
+              id: '2', 
+              name: 'value', 
+              data_type: 'String', 
+              description: 'System value',
+              ai_description: 'System configuration value',
+              business_definition: 'System configuration value',
+              comment: 'System value',
+              default_expression: null,
+              codec_expression: null,
+              ttl_expression: null,
+              is_nullable: true,
+              is_primary_key: false,
+              is_indexed: false
+            }
           ]
         }
       ]

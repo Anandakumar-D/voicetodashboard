@@ -27,8 +27,8 @@ export function Schema() {
   const fetchSchemas = async () => {
     try {
       setLoading(true)
-      // Fetch schemas from the backend
-      const response = await fetch('/.netlify/functions/get-schemas')
+      // Fetch comprehensive schemas from the backend
+      const response = await fetch('/.netlify/functions/get-comprehensive-schemas')
       if (response.ok) {
         const data = await response.json()
         setSchemas(data.schemas || [])
@@ -45,8 +45,30 @@ export function Schema() {
                 name: 'system',
                 type: 'table',
                 fields: [
-                  { id: '1', name: 'name', data_type: 'String', description: 'System name' },
-                  { id: '2', name: 'value', data_type: 'String', description: 'System value' }
+                  { 
+                    id: '1', 
+                    name: 'name', 
+                    data_type: 'String', 
+                    description: 'System name',
+                    ai_description: 'System name identifier',
+                    business_definition: 'System name identifier',
+                    comment: 'System name',
+                    default_expression: null,
+                    codec_expression: null,
+                    ttl_expression: null
+                  },
+                  { 
+                    id: '2', 
+                    name: 'value', 
+                    data_type: 'String', 
+                    description: 'System value',
+                    ai_description: 'System configuration value',
+                    business_definition: 'System configuration value',
+                    comment: 'System value',
+                    default_expression: null,
+                    codec_expression: null,
+                    ttl_expression: null
+                  }
                 ]
               }
             ]
@@ -67,8 +89,22 @@ export function Schema() {
               name: 'system',
               type: 'table',
               fields: [
-                { id: '1', name: 'name', data_type: 'String', description: 'System name' },
-                { id: '2', name: 'value', data_type: 'String', description: 'System value' }
+                { 
+                  id: '1', 
+                  name: 'name', 
+                  data_type: 'String', 
+                  description: 'System name',
+                  ai_description: 'System name identifier',
+                  business_definition: 'System name identifier'
+                },
+                { 
+                  id: '2', 
+                  name: 'value', 
+                  data_type: 'String', 
+                  description: 'System value',
+                  ai_description: 'System configuration value',
+                  business_definition: 'System configuration value'
+                }
               ]
             }
           ]
@@ -188,14 +224,71 @@ export function Schema() {
                         {expandedObjects.has(object.id) && (
                           <div className="ml-8 border-l border-gray-200 bg-white">
                             {object.fields.map((field) => (
-                              <div key={field.id} className="px-4 py-2 hover:bg-gray-50 flex items-center justify-between">
-                                <div className="flex items-center space-x-3">
-                                  {getTypeIcon('column')}
-                                  <span className="font-medium text-gray-900">{field.name}</span>
-                                  <span className="text-sm text-gray-500">({field.data_type})</span>
-                                  {field.description && (
-                                    <span className="text-sm text-gray-400">- {field.description}</span>
-                                  )}
+                              <div key={field.id} className="px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <div className="flex items-center space-x-3 mb-2">
+                                      {getTypeIcon('column')}
+                                      <span className="font-medium text-gray-900">{field.name}</span>
+                                      <span className="text-sm text-gray-500">({field.data_type})</span>
+                                      {field.is_primary_key && (
+                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                          Primary Key
+                                        </span>
+                                      )}
+                                      {field.is_indexed && (
+                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                          Indexed
+                                        </span>
+                                      )}
+                                    </div>
+                                    
+                                    {/* Business Definition */}
+                                    {field.business_definition && (
+                                      <div className="ml-8 mb-2">
+                                        <div className="text-sm font-medium text-gray-700 mb-1">Business Definition:</div>
+                                        <div className="text-sm text-gray-600 bg-blue-50 p-2 rounded">
+                                          {field.business_definition}
+                                        </div>
+                                      </div>
+                                    )}
+                                    
+                                    {/* AI Description */}
+                                    {field.ai_description && field.ai_description !== field.business_definition && (
+                                      <div className="ml-8 mb-2">
+                                        <div className="text-sm font-medium text-gray-700 mb-1">AI Analysis:</div>
+                                        <div className="text-sm text-gray-600 bg-purple-50 p-2 rounded">
+                                          {field.ai_description}
+                                        </div>
+                                      </div>
+                                    )}
+                                    
+                                    {/* Technical Details */}
+                                    <div className="ml-8">
+                                      <div className="grid grid-cols-2 gap-4 text-xs text-gray-500">
+                                        {field.comment && (
+                                          <div>
+                                            <span className="font-medium">Comment:</span> {field.comment}
+                                          </div>
+                                        )}
+                                        {field.default_expression && (
+                                          <div>
+                                            <span className="font-medium">Default:</span> {field.default_expression}
+                                          </div>
+                                        )}
+                                        {field.codec_expression && (
+                                          <div>
+                                            <span className="font-medium">Codec:</span> {field.codec_expression}
+                                          </div>
+                                        )}
+                                        {field.ttl_expression && (
+                                          <div>
+                                            <span className="font-medium">TTL:</span> {field.ttl_expression}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             ))}

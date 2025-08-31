@@ -210,8 +210,8 @@ export function Connections() {
   const handleSaveConnection = async () => {
     setIsConnecting(true)
     try {
-      // First test the connection via MindsDB
-      const testResponse = await fetch('/.netlify/functions/schema-sync', {
+      // Use enhanced schema sync for comprehensive metadata extraction
+      const response = await fetch('/.netlify/functions/enhanced-schema-sync', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -229,32 +229,21 @@ export function Connections() {
               username: formData.username,
               password: formData.password
             }
-          }
+          },
+          aiAnalysisEnabled: true // Enable AI analysis for business definitions
         })
       })
 
-      if (!testResponse.ok) {
-        const error = await testResponse.json()
-        throw new Error(error.error || 'Connection test failed')
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Connection and metadata extraction failed')
       }
 
-      // If test passes, save the connection
-      const saveResponse = await fetch('/.netlify/functions/save-connection', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          connection: {
-            name: formData.name,
-            type: formData.type,
-            description: formData.description
-          }
-        })
-      })
+      const result = await response.json()
+      console.log('Enhanced schema sync result:', result)
 
-      if (saveResponse.ok) {
-        alert('✅ Connection saved and tested successfully!')
+      if (result.success) {
+        alert(`✅ Connection saved and metadata extracted successfully!\n\nExtracted:\n- ${result.metadata_summary.databases} databases\n- ${result.metadata_summary.tables} tables\n- ${result.metadata_summary.columns} columns\n\nAI analysis was performed to generate business definitions for columns.`)
         setShowConnectionForm(false)
         setFormData({
           name: '',
@@ -269,8 +258,7 @@ export function Connections() {
         // Refresh connections list
         fetchConnections()
       } else {
-        const error = await saveResponse.json()
-        alert(`❌ Failed to save connection: ${error.error}`)
+        alert(`❌ Failed to save connection: ${result.error}`)
       }
     } catch (error) {
       alert(`❌ Failed to save connection: ${error}`)

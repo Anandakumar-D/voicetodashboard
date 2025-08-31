@@ -79,19 +79,26 @@ CREATE TABLE IF NOT EXISTS public.data_source_objects (
     UNIQUE(schema_id, name)
 );
 
--- Columns/fields with semantics (works for any data source)
+-- Columns/fields with comprehensive metadata (works for any data source)
 CREATE TABLE IF NOT EXISTS public.data_source_fields (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     object_id UUID REFERENCES public.data_source_objects(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     data_type TEXT NOT NULL,
     is_nullable BOOLEAN DEFAULT TRUE,
-    default_value TEXT,
-    description TEXT,
-    ai_description TEXT,
-    business_definition TEXT,
+    default_type TEXT, -- For ClickHouse: DEFAULT, MATERIALIZED, ALIAS, etc.
+    default_expression TEXT, -- The actual default value expression
+    comment TEXT, -- Original column comment from database
+    codec_expression TEXT, -- Compression codec (ClickHouse specific)
+    ttl_expression TEXT, -- TTL expression (ClickHouse specific)
+    description TEXT, -- Human-readable description
+    ai_description TEXT, -- AI-generated description
+    business_definition TEXT, -- Business meaning and purpose
     data_quality_score DECIMAL(3,2),
-    metadata JSONB, -- Additional field metadata
+    is_primary_key BOOLEAN DEFAULT FALSE,
+    is_indexed BOOLEAN DEFAULT FALSE,
+    sample_values JSONB, -- Sample data values for analysis
+    metadata JSONB, -- Additional field metadata (position, constraints, etc.)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(object_id, name)
@@ -160,6 +167,43 @@ CREATE TABLE IF NOT EXISTS public.data_source_sync_history (
     started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     completed_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Metadata extraction jobs
+CREATE TABLE IF NOT EXISTS public.metadata_extraction_jobs (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    connection_id UUID REFERENCES public.data_source_connections(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'completed', 'failed')),
+    progress_percentage INTEGER DEFAULT 0,
+    total_databases INTEGER DEFAULT 0,
+    total_tables INTEGER DEFAULT 0,
+    total_columns INTEGER DEFAULT 0,
+    processed_databases INTEGER DEFAULT 0,
+    processed_tables INTEGER DEFAULT 0,
+    processed_columns INTEGER DEFAULT 0,
+    ai_analysis_enabled BOOLEAN DEFAULT TRUE,
+    error_message TEXT,
+    metadata JSONB, -- Job configuration and results
+    started_at TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    created_by UUID REFERENCES public.profiles(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- AI analysis cache (to avoid re-analyzing same columns)
+CREATE TABLE IF NOT EXISTS public.ai_analysis_cache (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    connection_id UUID REFERENCES public.data_source_connections(id) ON DELETE CASCADE,
+    table_name TEXT NOT NULL,
+    column_name TEXT NOT NULL,
+    column_type TEXT NOT NULL,
+    database_name TEXT,
+    schema_name TEXT,
+    ai_definition TEXT,
+    model_used TEXT, -- Which AI model was used
+    confidence_score DECIMAL(3,2),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(connection_id, table_name, column_name, column_type)
 );
 
 -- Row Level Security (RLS) Policies
