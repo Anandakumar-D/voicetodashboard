@@ -24,56 +24,63 @@ export function Schema() {
   const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(new Set())
   const [expandedObjects, setExpandedObjects] = useState<Set<string>>(new Set())
 
-  useEffect(() => {
-    // TODO: Fetch schemas from Supabase
-    setSchemas([
-      {
-        id: '1',
-        name: 'analytics',
-        type: 'database',
-        objects: [
+  const fetchSchemas = async () => {
+    try {
+      setLoading(true)
+      // Fetch schemas from the backend
+      const response = await fetch('/.netlify/functions/get-schemas')
+      if (response.ok) {
+        const data = await response.json()
+        setSchemas(data.schemas || [])
+      } else {
+        // Fallback to mock data if the endpoint doesn't exist
+        setSchemas([
           {
             id: '1',
-            name: 'users',
-            type: 'table',
-            fields: [
-              { id: '1', name: 'id', data_type: 'UInt64', description: 'User ID' },
-              { id: '2', name: 'email', data_type: 'String', description: 'User email' },
-              { id: '3', name: 'created_at', data_type: 'DateTime', description: 'Creation timestamp' }
-            ]
-          },
-          {
-            id: '2',
-            name: 'events',
-            type: 'table',
-            fields: [
-              { id: '4', name: 'id', data_type: 'UInt64', description: 'Event ID' },
-              { id: '5', name: 'user_id', data_type: 'UInt64', description: 'User ID' },
-              { id: '6', name: 'event_type', data_type: 'String', description: 'Type of event' },
-              { id: '7', name: 'timestamp', data_type: 'DateTime', description: 'Event timestamp' }
+            name: 'default',
+            type: 'database',
+            objects: [
+              {
+                id: '1',
+                name: 'system',
+                type: 'table',
+                fields: [
+                  { id: '1', name: 'name', data_type: 'String', description: 'System name' },
+                  { id: '2', name: 'value', data_type: 'String', description: 'System value' }
+                ]
+              }
             ]
           }
-        ]
-      },
-      {
-        id: '2',
-        name: 'marketing',
-        type: 'database',
-        objects: [
-          {
-            id: '3',
-            name: 'campaigns',
-            type: 'table',
-            fields: [
-              { id: '8', name: 'id', data_type: 'UInt64', description: 'Campaign ID' },
-              { id: '9', name: 'name', data_type: 'String', description: 'Campaign name' },
-              { id: '10', name: 'status', data_type: 'String', description: 'Campaign status' }
-            ]
-          }
-        ]
+        ])
       }
-    ])
-    setLoading(false)
+    } catch (error) {
+      console.error('Error fetching schemas:', error)
+      // Fallback to mock data
+      setSchemas([
+        {
+          id: '1',
+          name: 'default',
+          type: 'database',
+          objects: [
+            {
+              id: '1',
+              name: 'system',
+              type: 'table',
+              fields: [
+                { id: '1', name: 'name', data_type: 'String', description: 'System name' },
+                { id: '2', name: 'value', data_type: 'String', description: 'System value' }
+              ]
+            }
+          ]
+        }
+      ])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchSchemas()
   }, [])
 
   const toggleSchema = (schemaId: string) => {

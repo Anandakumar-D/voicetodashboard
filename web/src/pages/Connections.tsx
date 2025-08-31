@@ -84,27 +84,48 @@ export function Connections() {
     }
   ]
 
-  useEffect(() => {
-    // TODO: Fetch connections from Supabase
-    setConnections([
-      {
-        id: '1',
-        name: 'Production ClickHouse',
-        type: 'clickhouse',
-        description: 'Main production database',
-        is_active: true,
-        created_at: '2024-01-15T10:30:00Z'
-      },
-      {
-        id: '2',
-        name: 'Analytics MySQL',
-        type: 'mysql',
-        description: 'Analytics database',
-        is_active: true,
-        created_at: '2024-01-10T14:20:00Z'
+  const fetchConnections = async () => {
+    try {
+      setLoading(true)
+      // For now, we'll use a simple endpoint to get connections
+      // In a real implementation, this would fetch from Supabase
+      const response = await fetch('/.netlify/functions/get-connections')
+      if (response.ok) {
+        const data = await response.json()
+        setConnections(data.connections || [])
+      } else {
+        // Fallback to mock data if the endpoint doesn't exist
+        setConnections([
+          {
+            id: '1',
+            name: 'Production ClickHouse',
+            type: 'clickhouse',
+            description: 'Main production database',
+            is_active: true,
+            created_at: '2024-01-15T10:30:00Z'
+          }
+        ])
       }
-    ])
-    setLoading(false)
+    } catch (error) {
+      console.error('Error fetching connections:', error)
+      // Fallback to mock data
+      setConnections([
+        {
+          id: '1',
+          name: 'Production ClickHouse',
+          type: 'clickhouse',
+          description: 'Main production database',
+          is_active: true,
+          created_at: '2024-01-15T10:30:00Z'
+        }
+      ])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchConnections()
   }, [])
 
   const getTypeIcon = (type: string) => {
@@ -189,8 +210,8 @@ export function Connections() {
   const handleSaveConnection = async () => {
     setIsConnecting(true)
     try {
-      // Save connection to Supabase and test via MindsDB
-      const response = await fetch('/.netlify/functions/schema-sync', {
+      // First test the connection via MindsDB
+      const testResponse = await fetch('/.netlify/functions/schema-sync', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -212,7 +233,27 @@ export function Connections() {
         })
       })
 
-      if (response.ok) {
+      if (!testResponse.ok) {
+        const error = await testResponse.json()
+        throw new Error(error.error || 'Connection test failed')
+      }
+
+      // If test passes, save the connection
+      const saveResponse = await fetch('/.netlify/functions/save-connection', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          connection: {
+            name: formData.name,
+            type: formData.type,
+            description: formData.description
+          }
+        })
+      })
+
+      if (saveResponse.ok) {
         alert('✅ Connection saved and tested successfully!')
         setShowConnectionForm(false)
         setFormData({
@@ -225,9 +266,10 @@ export function Connections() {
           password: '',
           description: ''
         })
-        // TODO: Refresh connections list
+        // Refresh connections list
+        fetchConnections()
       } else {
-        const error = await response.json()
+        const error = await saveResponse.json()
         alert(`❌ Failed to save connection: ${error.error}`)
       }
     } catch (error) {

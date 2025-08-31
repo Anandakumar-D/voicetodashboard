@@ -81,6 +81,67 @@ app.post('/.netlify/functions/schema-sync', async (req, res) => {
   }
 })
 
+// In-memory storage for connections (in production, this would be Supabase)
+let connections = [
+  {
+    id: '1',
+    name: 'Production ClickHouse',
+    type: 'clickhouse',
+    description: 'Main production database',
+    is_active: true,
+    created_at: '2024-01-15T10:30:00Z'
+  }
+]
+
+// Get connections endpoint
+app.get('/.netlify/functions/get-connections', (req, res) => {
+  res.json({ connections })
+})
+
+// Save connection endpoint
+app.post('/.netlify/functions/save-connection', (req, res) => {
+  try {
+    const { connection } = req.body
+    const newConnection = {
+      id: Date.now().toString(),
+      name: connection.name,
+      type: connection.type,
+      description: connection.description || '',
+      is_active: true,
+      created_at: new Date().toISOString()
+    }
+    connections.push(newConnection)
+    res.json({ success: true, connection: newConnection })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// Get schemas endpoint
+app.get('/.netlify/functions/get-schemas', (req, res) => {
+  // For now, return mock schema data
+  // In production, this would fetch from Supabase based on saved connections
+  const schemas = [
+    {
+      id: '1',
+      name: 'default',
+      type: 'database',
+      objects: [
+        {
+          id: '1',
+          name: 'system',
+          type: 'table',
+          fields: [
+            { id: '1', name: 'name', data_type: 'String', description: 'System name' },
+            { id: '2', name: 'value', data_type: 'String', description: 'System value' }
+          ]
+        }
+      ]
+    }
+  ]
+  res.json({ schemas })
+})
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 
