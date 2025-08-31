@@ -7,3 +7,5 @@ venv/
 
 # Configuration files
 google-stt.json
+# Local Netlify folder
+.netlify
