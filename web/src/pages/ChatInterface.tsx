@@ -85,17 +85,51 @@ export function ChatInterface() {
     setInputText('')
     setIsLoading(true)
 
-    // Simulate AI response
-    setTimeout(() => {
+    try {
+      // Call the MindsDB MCP agent function
+      const response = await fetch('/.netlify/functions/agent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          naturalLanguageQuery: inputText,
+          connectionId: '1', // TODO: Get from selected connection
+          organizationId: 'demo-org',
+          userId: 'demo-user'
+        })
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        const aiMessage: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          text: `✅ Query executed successfully!\n\n**Generated SQL:**\n\`\`\`sql\n${result.sql}\n\`\`\`\n\n**Results:** ${result.rowCount} rows returned\n\n${result.result.length > 0 ? 'First few rows:\n' + JSON.stringify(result.result.slice(0, 3), null, 2) : 'No data returned'}`,
+          isUser: false,
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, aiMessage])
+      } else {
+        const error = await response.json()
+        const aiMessage: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          text: `❌ Error: ${error.error || 'Failed to process query'}\n\nThis might be because:\n- No data source connections are configured\n- The connection is not working\n- The query couldn't be converted to SQL\n\nTry adding a data source connection first!`,
+          isUser: false,
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, aiMessage])
+      }
+    } catch (error) {
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
-        text: `I understand you're asking about: "${inputText}". This would translate to a SQL query. In a real implementation, this would connect to MindsDB MCP to generate and execute the query.`,
+        text: `❌ Connection error: ${error}\n\nMake sure:\n1. MindsDB is running (http://localhost:47334)\n2. You have added data source connections\n3. The Netlify functions are deployed`,
         isUser: false,
         timestamp: new Date()
       }
       setMessages(prev => [...prev, aiMessage])
+    } finally {
       setIsLoading(false)
-    }, 2000)
+    }
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {

@@ -7,9 +7,11 @@ const supabaseUrl = process.env.SUPABASE_URL
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-// MindsDB MCP configuration
-const MINDSDB_HOST = process.env.MINDSDB_HOST || 'https://cloud.mindsdb.com'
-const MINDSDB_API_KEY = process.env.MINDSDB_API_KEY
+// MindsDB MCP configuration - supports both local and cloud
+const MINDSDB_HOST = process.env.MINDSDB_HOST || 'http://localhost:47334'
+const MINDSDB_API_KEY = process.env.MINDSDB_API_KEY || '' // Optional for local
+const MINDSDB_USERNAME = process.env.MINDSDB_USERNAME || 'mindsdb'
+const MINDSDB_PASSWORD = process.env.MINDSDB_PASSWORD || 'mindsdb'
 
 exports.handler = async (event, context) => {
   // Handle CORS
@@ -136,6 +138,18 @@ async function syncSchemaViaMCP(connection) {
     }
 
     // Connect to data source via MindsDB MCP
+    const headers = {
+      'Content-Type': 'application/json'
+    }
+    
+    if (MINDSDB_API_KEY) {
+      headers['Authorization'] = `Bearer ${MINDSDB_API_KEY}`
+    } else {
+      // For local MindsDB, use basic auth
+      const auth = Buffer.from(`${MINDSDB_USERNAME}:${MINDSDB_PASSWORD}`).toString('base64')
+      headers['Authorization'] = `Basic ${auth}`
+    }
+    
     const mcpResponse = await axios.post(`${MINDSDB_HOST}/api/sql/query`, {
       query: query,
       context: {
@@ -144,12 +158,7 @@ async function syncSchemaViaMCP(connection) {
           ...connection_config
         }
       }
-    }, {
-      headers: {
-        'Authorization': `Bearer ${MINDSDB_API_KEY}`,
-        'Content-Type': 'application/json'
-      }
-    })
+    }, { headers })
 
     return mcpResponse.data
   } catch (error) {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Database, Edit, Trash2, RefreshCw, X, Check } from 'lucide-react'
+import { Plus, Database, Edit, Trash2, RefreshCw, X, Check, ArrowLeft } from 'lucide-react'
 
 interface DataSourceConnection {
   id: string
@@ -10,19 +10,78 @@ interface DataSourceConnection {
   created_at: string
 }
 
+interface ConnectionForm {
+  name: string
+  type: string
+  host: string
+  port: string
+  database: string
+  username: string
+  password: string
+  description: string
+}
+
 export function Connections() {
   const [connections, setConnections] = useState<DataSourceConnection[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showConnectionForm, setShowConnectionForm] = useState(false)
   const [selectedType, setSelectedType] = useState('')
+  const [formData, setFormData] = useState<ConnectionForm>({
+    name: '',
+    type: '',
+    host: '',
+    port: '',
+    database: '',
+    username: '',
+    password: '',
+    description: ''
+  })
+  const [isConnecting, setIsConnecting] = useState(false)
   
   const dataSourceTypes = [
-    { id: 'clickhouse', name: 'ClickHouse', icon: '🐘', description: 'High-performance columnar database' },
-    { id: 'mysql', name: 'MySQL', icon: '🐬', description: 'Popular open-source relational database' },
-    { id: 'postgresql', name: 'PostgreSQL', icon: '🐘', description: 'Advanced open-source database' },
-    { id: 'mongodb', name: 'MongoDB', icon: '🍃', description: 'Document-based NoSQL database' },
-    { id: 'snowflake', name: 'Snowflake', icon: '❄️', description: 'Cloud data platform' },
-    { id: 'bigquery', name: 'BigQuery', icon: '☁️', description: 'Google Cloud data warehouse' }
+    { 
+      id: 'clickhouse', 
+      name: 'ClickHouse', 
+      icon: '🐘', 
+      description: 'High-performance columnar database',
+      defaultPort: '8123'
+    },
+    { 
+      id: 'mysql', 
+      name: 'MySQL', 
+      icon: '🐬', 
+      description: 'Popular open-source relational database',
+      defaultPort: '3306'
+    },
+    { 
+      id: 'postgresql', 
+      name: 'PostgreSQL', 
+      icon: '🐘', 
+      description: 'Advanced open-source database',
+      defaultPort: '5432'
+    },
+    { 
+      id: 'mongodb', 
+      name: 'MongoDB', 
+      icon: '🍃', 
+      description: 'Document-based NoSQL database',
+      defaultPort: '27017'
+    },
+    { 
+      id: 'snowflake', 
+      name: 'Snowflake', 
+      icon: '❄️', 
+      description: 'Cloud data platform',
+      defaultPort: '443'
+    },
+    { 
+      id: 'bigquery', 
+      name: 'BigQuery', 
+      icon: '☁️', 
+      description: 'Google Cloud data warehouse',
+      defaultPort: '443'
+    }
   ]
 
   useEffect(() => {
@@ -72,10 +131,125 @@ export function Connections() {
   }
 
   const handleSelectType = (type: string) => {
+    const selectedDataSource = dataSourceTypes.find(ds => ds.id === type)
     setSelectedType(type)
-    // For now, just close the modal and show a success message
+    setFormData(prev => ({
+      ...prev,
+      type: type,
+      port: selectedDataSource?.defaultPort || ''
+    }))
     setShowAddModal(false)
-    alert(`Selected ${type} connection type. In a real implementation, this would open a configuration form.`)
+    setShowConnectionForm(true)
+  }
+
+  const handleFormChange = (field: keyof ConnectionForm, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }))
+  }
+
+  const handleTestConnection = async () => {
+    setIsConnecting(true)
+    try {
+      // Test connection via MindsDB MCP
+      const response = await fetch('/.netlify/functions/schema-sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          connectionId: 'test',
+          connection: {
+            type: formData.type,
+            connection_config: {
+              host: formData.host,
+              port: parseInt(formData.port),
+              database: formData.database,
+              username: formData.username,
+              password: formData.password
+            }
+          }
+        })
+      })
+
+      if (response.ok) {
+        alert('✅ Connection successful! Your data source is ready to use.')
+      } else {
+        const error = await response.json()
+        alert(`❌ Connection failed: ${error.error}`)
+      }
+    } catch (error) {
+      alert(`❌ Connection failed: ${error}`)
+    } finally {
+      setIsConnecting(false)
+    }
+  }
+
+  const handleSaveConnection = async () => {
+    setIsConnecting(true)
+    try {
+      // Save connection to Supabase and test via MindsDB
+      const response = await fetch('/.netlify/functions/schema-sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          connectionId: 'new',
+          connection: {
+            name: formData.name,
+            type: formData.type,
+            description: formData.description,
+            connection_config: {
+              host: formData.host,
+              port: parseInt(formData.port),
+              database: formData.database,
+              username: formData.username,
+              password: formData.password
+            }
+          }
+        })
+      })
+
+      if (response.ok) {
+        alert('✅ Connection saved and tested successfully!')
+        setShowConnectionForm(false)
+        setFormData({
+          name: '',
+          type: '',
+          host: '',
+          port: '',
+          database: '',
+          username: '',
+          password: '',
+          description: ''
+        })
+        // TODO: Refresh connections list
+      } else {
+        const error = await response.json()
+        alert(`❌ Failed to save connection: ${error.error}`)
+      }
+    } catch (error) {
+      alert(`❌ Failed to save connection: ${error}`)
+    } finally {
+      setIsConnecting(false)
+    }
+  }
+
+  const handleBackToTypes = () => {
+    setShowConnectionForm(false)
+    setShowAddModal(true)
+    setFormData({
+      name: '',
+      type: '',
+      host: '',
+      port: '',
+      database: '',
+      username: '',
+      password: '',
+      description: ''
+    })
   }
 
   if (loading) {
@@ -165,13 +339,13 @@ export function Connections() {
         </div>
       )}
 
-      {/* Add Connection Modal */}
+      {/* Data Source Type Selection Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-gray-900">Add Data Source Connection</h3>
+                <h3 className="text-lg font-medium text-gray-900">Select Data Source Type</h3>
                 <button
                   onClick={() => setShowAddModal(false)}
                   className="text-gray-400 hover:text-gray-600"
@@ -185,27 +359,159 @@ export function Connections() {
                   <button
                     key={type.id}
                     onClick={() => handleSelectType(type.id)}
-                    className="w-full p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-primary-300 transition-colors text-left"
+                    className="w-full p-4 border border-gray-200 rounded-lg hover:border-primary-300 hover:bg-primary-50 transition-colors text-left"
                   >
                     <div className="flex items-center space-x-3">
                       <span className="text-2xl">{type.icon}</span>
-                      <div className="flex-1">
+                      <div>
                         <h4 className="font-medium text-gray-900">{type.name}</h4>
                         <p className="text-sm text-gray-500">{type.description}</p>
                       </div>
-                      <Check className="h-5 w-5 text-primary-600 opacity-0 group-hover:opacity-100" />
+                      <Check className="h-5 w-5 text-primary-600 ml-auto opacity-0 group-hover:opacity-100" />
                     </div>
                   </button>
                 ))}
               </div>
-              
-              <div className="mt-6 flex justify-end space-x-3">
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Connection Form Modal */}
+      {showConnectionForm && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-10 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={handleBackToTypes}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                  </button>
+                  <h3 className="text-lg font-medium text-gray-900">
+                    Configure {getTypeLabel(selectedType)} Connection
+                  </h3>
+                </div>
                 <button
-                  onClick={() => setShowAddModal(false)}
-                  className="btn btn-secondary"
+                  onClick={() => setShowConnectionForm(false)}
+                  className="text-gray-400 hover:text-gray-600"
                 >
-                  Cancel
+                  <X className="h-6 w-6" />
                 </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Connection Name
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => handleFormChange('name', e.target.value)}
+                    className="input w-full"
+                    placeholder="e.g., Production ClickHouse"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Description
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.description}
+                    onChange={(e) => handleFormChange('description', e.target.value)}
+                    className="input w-full"
+                    placeholder="Brief description of this connection"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Host
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.host}
+                      onChange={(e) => handleFormChange('host', e.target.value)}
+                      className="input w-full"
+                      placeholder="localhost"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Port
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.port}
+                      onChange={(e) => handleFormChange('port', e.target.value)}
+                      className="input w-full"
+                      placeholder="8123"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Database
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.database}
+                    onChange={(e) => handleFormChange('database', e.target.value)}
+                    className="input w-full"
+                    placeholder="default"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Username
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.username}
+                      onChange={(e) => handleFormChange('username', e.target.value)}
+                      className="input w-full"
+                      placeholder="default"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Password
+                    </label>
+                    <input
+                      type="password"
+                      value={formData.password}
+                      onChange={(e) => handleFormChange('password', e.target.value)}
+                      className="input w-full"
+                      placeholder="••••••••"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex space-x-3 pt-4">
+                  <button
+                    onClick={handleTestConnection}
+                    disabled={isConnecting}
+                    className="btn btn-secondary flex-1"
+                  >
+                    {isConnecting ? 'Testing...' : 'Test Connection'}
+                  </button>
+                  <button
+                    onClick={handleSaveConnection}
+                    disabled={isConnecting || !formData.name || !formData.host}
+                    className="btn btn-primary flex-1"
+                  >
+                    {isConnecting ? 'Saving...' : 'Save Connection'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
